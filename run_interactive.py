@@ -1,11 +1,11 @@
-# run_interactive.py
+# run_interactive.py (ordered LR / TB navigation)
 import sys, math, pygame
 from datetime import datetime
 from pathlib import Path
 
 from hexscribe import HexScreenRenderer, UILayout
 from hexscribe.state import load_hex, save_hex, delete_hex
-from hexscribe.types import COLUMNS, FEATURE_TYPES, KEY_TO_LABEL
+from hexscribe.types import COLUMNS, KEY_TO_LABEL
 
 HEX_ID = "1106"
 
@@ -29,41 +29,18 @@ def load_pygame_font(name: str, size: int, bold=False, italic=False) -> "pygame.
     f = pygame.font.SysFont("arial", size, bold=bold, italic=italic)
     return f
 
-def _unit(dx, dy):
-    m = math.hypot(dx, dy)
-    if m == 0: return (0.0, 0.0)
-    return (dx/m, dy/m)
-
-def _pick_best(cands):
-    cands.sort(key=lambda t: (-t[0], t[1]))
-    return cands[0][2] if cands else None
-
-def _next_index_by_direction(diamonds, sel, dx, dy):
-    if not diamonds or sel < 0 or sel >= len(diamonds):
-        return sel
-    ox, oy, _ = diamonds[sel]
-    ux, uy = _unit(dx, dy)
-    forward, fallback = [], []
-    for i, (x, y, _) in enumerate(diamonds):
-        if i == sel: continue
-        vx, vy = (x-ox), (y-oy)
-        dist2 = vx*vx + vy*vy
-        if dist2 == 0: continue
-        dot = vx*ux + vy*uy
-        angle_score = dot / math.sqrt(dist2)
-        tup = (angle_score, dist2, i)
-        (forward if dot>0 else fallback).append(tup)
-    idx = _pick_best(forward) or _pick_best(fallback)
-    return idx if idx is not None else sel
-
 def make_json_feature_picker(hex_data_ref, selected_index_ref):
     def pick(_ignored):
         hex_data = hex_data_ref[0]
         sel = selected_index_ref[0]
-        if not hex_data or "diamonds" not in hex_data: return UNKNOWN_FEATURE
-        if sel is None or sel < 0 or sel >= len(hex_data["diamonds"]): return UNKNOWN_FEATURE
+        if not hex_data or "diamonds" not in hex_data: return {
+            "name":"Unknown","type":"Unexplored","text":"Press Enter to explore.","category":""
+        }
+        if sel is None or sel < 0 or sel >= len(hex_data["diamonds"]):
+            return {"name":"Unknown","type":"Unexplored","text":"Press Enter to explore.","category":""}
         d = hex_data["diamonds"][sel]
-        if d.get("status") != "discovered": return UNKNOWN_FEATURE
+        if d.get("status") != "discovered":
+            return {"name":"Unknown","type":"Unexplored","text":"Press Enter to explore.","category":""}
         return {
             "name": d.get("name") or "(unnamed)",
             "type": d.get("type") or "",
@@ -72,6 +49,7 @@ def make_json_feature_picker(hex_data_ref, selected_index_ref):
         }
     return pick
 
+# ---------- Modal (same as previous compact version) ----------
 class ExploreModal:
     def __init__(self, screen, ui, deck_value: int, initial=None):
         self.screen = screen
@@ -88,179 +66,149 @@ class ExploreModal:
         self.row_idx = 0
 
         pygame.font.init()
-        self.font_header = load_pygame_font("Jost-VariableFont_wght.ttf", 30, bold=True)
-        self.font_label  = load_pygame_font("Jost-VariableFont_wght.ttf", 20, bold=True)
-        self.font_hint   = load_pygame_font("LibreCaslonText-Italic.ttf", 16, italic=True)
-        self.font_text   = load_pygame_font("LibreCaslonText-Regular.ttf", 18)
+        self.font_title = load_pygame_font("Jost-VariableFont_wght.ttf", 22, bold=True)
+        self.font_cat   = load_pygame_font("LibreCaslonText-Bold.ttf", 18)
+        self.font_item  = load_pygame_font("LibreCaslonText-Regular.ttf", 16)
+        self.font_hint  = load_pygame_font("LibreCaslonText-Italic.ttf", 14, italic=True)
+        self.font_text  = load_pygame_font("LibreCaslonText-Regular.ttf", 16)
 
-        self.pad = 18
-        self.line_gap = 8
+        self.pad = 10
+        self.line_gap = 6
 
-        flat = [(c, r, key) for c, (_, items) in enumerate(COLUMNS) for r, (key, _label) in enumerate(items)]
-        if self.type_key:
-            for c, r, k in flat:
-                if k == self.type_key:
-                    self.col_idx, self.row_idx = c, r; break
+        for ci, (_title, items) in enumerate(COLUMNS):
+            for ri, (key, _label) in enumerate(items):
+                if key == self.type_key:
+                    self.col_idx, self.row_idx = ci, ri
 
     def _wrap(self, text, font, max_w):
-        lines = []
+        out, cur = [], ""
         for para in text.split("\n"):
-            words, cur = para.split(" "), ""
-            for w in words:
+            cur = ""
+            for w in para.split(" "):
                 test = (cur + " " + w).strip()
                 if font.size(test)[0] <= max_w:
                     cur = test
                 else:
-                    if cur: lines.append(cur)
+                    if cur: out.append(cur)
                     cur = w
-            lines.append(cur)
-        return lines or [""]
+            out.append(cur)
+        return out or [""]
 
-    def _compute_rect(self):
+    def _panel_rect(self):
         W, H = self.screen.get_size()
-        panel_w, panel_h = 640, 440
-        return pygame.Rect((W - panel_w)//2, (H - panel_h)//2, panel_w, panel_h)
+        return pygame.Rect((W-500)//2, (H-300)//2, 500, 300)
 
-    def _draw_overlay(self):
-        self.rect = self._compute_rect()
-        pygame.draw.rect(self.screen, (0,0,0), self.rect)
-        pygame.draw.rect(self.screen, (255,255,255), self.rect, 2)
+    def _draw_panel(self, title):
+        rect = self._panel_rect()
+        self.rect = rect
+        pygame.draw.rect(self.screen, (0,0,0), rect, 3)
+        inner = rect.inflate(-6, -6)
+        pygame.draw.rect(self.screen, (255,255,255), inner)
+        bar = pygame.Rect(inner.x, inner.y, inner.w, 44)
+        pygame.draw.rect(self.screen, (0,0,0), bar)
+        tx = bar.x + 12
+        ty = bar.y + (bar.h - self.font_title.get_height())//2
+        self.screen.blit(self.font_title.render(title, False, (255,255,255)), (tx, ty))
+        return inner.x + self.pad, bar.bottom + self.pad, inner
 
-    def _blit(self, txt, x, y, font, color=(255,255,255)):
+    def _blit(self, txt, x, y, font, color=(0,0,0)):
         surf = font.render(txt, False, color)
-        self.screen.blit(surf, (x, y))
-        return surf.get_width(), surf.get_height()
+        self.screen.blit(surf, (x, y)); return surf.get_width(), surf.get_height()
 
     def _blit_in_box(self, text, box, font):
-        pad = 10
+        pad = 8
         wrapped = self._wrap(text, font, box.w - 2*pad)
         ty = box.y + pad
-        line_h = font.get_height() + 4
-        max_lines = (box.h - 2*pad) // line_h
+        line_h = font.get_height() + 3
+        max_lines = max(1, (box.h - 2*pad) // line_h)
         for ln in wrapped[-max_lines:]:
-            surf = font.render(ln, False, (0,0,0))
-            self.screen.blit(surf, (box.x + pad, ty))
+            self.screen.blit(font.render(ln, False, (0,0,0)), (box.x + pad, ty))
             ty += line_h
 
-    def _handle_text_input(self, current: str, event, limit: int) -> str:
-        if event.key == pygame.K_BACKSPACE:
-            return current[:-1]
-        if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-            return current + "\n"
-        if event.unicode:
-            ch = event.unicode
-            if len(current) < limit and (31 < ord(ch) or ch in "\n\t"):
-                return current + ch
+    def _handle_text_input(self, current, event, limit):
+        if event.key == pygame.K_BACKSPACE: return current[:-1]
+        if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER): return current + "\n"
+        if event.unicode and len(current) < limit and (31 < ord(event.unicode) or event.unicode in "\n\t"):
+            return current + event.unicode
         return current
 
     def run(self):
         clock = pygame.time.Clock()
         while self.active:
             for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.active = False
-                    return None
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        self.active = False
-                        return None
-
-                    if self.step == 0:
-                        if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                            self.step = 1
-
+                if event.type == pygame.QUIT: self.active=False; return None
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE: self.active=False; return None
+                    if self.step == 0 and event.key in (pygame.K_RETURN, pygame.K_KP_ENTER): self.step = 1
                     elif self.step == 1:
                         if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                            if self.name.strip():
-                                self.step = 2
-                        elif event.key == pygame.K_BACKSPACE:
-                            self.name = self.name[:-1]
-                        else:
-                            if event.unicode and len(self.name) < 80:
-                                self.name += event.unicode
-
+                            if self.name.strip(): self.step = 2
+                        elif event.key == pygame.K_BACKSPACE: self.name = self.name[:-1]
+                        elif event.unicode and len(self.name) < 80: self.name += event.unicode
                     elif self.step == 2:
                         cols = COLUMNS
                         if event.key in (pygame.K_LEFT, pygame.K_a):
-                            self.col_idx = (self.col_idx - 1) % len(cols)
-                            self.row_idx = min(self.row_idx, len(cols[self.col_idx][1]) - 1)
+                            self.col_idx = (self.col_idx - 1) % len(cols); self.row_idx = min(self.row_idx, len(cols[self.col_idx][1]) - 1)
                         elif event.key in (pygame.K_RIGHT, pygame.K_d):
-                            self.col_idx = (self.col_idx + 1) % len(cols)
-                            self.row_idx = min(self.row_idx, len(cols[self.col_idx][1]) - 1)
-                        elif event.key in (pygame.K_UP, pygame.K_w):
-                            self.row_idx = (self.row_idx - 1) % len(cols[self.col_idx][1])
-                        elif event.key in (pygame.K_DOWN, pygame.K_s):
-                            self.row_idx = (self.row_idx + 1) % len(cols[self.col_idx][1])
+                            self.col_idx = (self.col_idx + 1) % len(cols); self.row_idx = min(self.row_idx, len(cols[self.col_idx][1]) - 1)
+                        elif event.key in (pygame.K_UP, pygame.K_w): self.row_idx = (self.row_idx - 1) % len(cols[self.col_idx][1])
+                        elif event.key in (pygame.K_DOWN, pygame.K_s): self.row_idx = (self.row_idx + 1) % len(cols[self.col_idx][1])
                         elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                            self.type_key = cols[self.col_idx][1][self.row_idx][0]
-                            self.step = 3
-
+                            self.type_key = cols[self.col_idx][1][self.row_idx][0]; self.step = 3
                     elif self.step == 3:
-                        if (event.key in (pygame.K_RETURN, pygame.K_KP_ENTER)) and (pygame.key.get_mods() & pygame.KMOD_CTRL):
-                            self.step = 4
-                        else:
-                            self.notes = self._handle_text_input(self.notes, event, 4000)
-
+                        if (event.key in (pygame.K_RETURN, pygame.K_KP_ENTER)) and (pygame.key.get_mods() & pygame.KMOD_CTRL): self.step = 4
+                        else: self.notes = self._handle_text_input(self.notes, event, 4000)
                     elif self.step == 4:
                         if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                            return {
-                                "name": self.name.strip(),
-                                "type": KEY_TO_LABEL.get(self.type_key, ""),
-                                "text": self.notes.strip(),
-                                "icon": self.type_key,
-                            }
-                        elif event.key == pygame.K_BACKSPACE:
-                            self.step = 3
+                            return {"name": self.name.strip(), "type": KEY_TO_LABEL.get(self.type_key, ""), "text": self.notes.strip(), "icon": self.type_key}
+                        elif event.key == pygame.K_BACKSPACE: self.step = 3
 
-            self._draw_overlay()
-            x = self.rect.x + self.pad
-            y = self.rect.y + self.pad
-
+            # draw
             if self.step == 0:
-                _, h = self._blit(f"Explore — Draw from Deck {self.deck_value}", x, y, self.font_header); y += h + self.line_gap + 6
-                _, h = self._blit("Draw a card for this diamond's deck.", x, y, self.font_label); y += h + self.line_gap
+                x, y, inner = self._draw_panel(f"Explore — Draw from Deck {self.deck_value}")
+                self._blit("Draw a card for this diamond's deck.", x, y, self.font_item); y += self.font_item.get_height() + self.line_gap
                 self._blit("Press Enter to continue.", x, y, self.font_hint)
-
             elif self.step == 1:
-                _, h = self._blit("Name this location", x, y, self.font_header); y += h + self.line_gap + 6
-                box = pygame.Rect(x, y, self.rect.w - 2*self.pad, 42)
-                pygame.draw.rect(self.screen, (255,255,255), box, 2)
-                tx_y = box.y + (box.h - self.font_text.get_height())//2
-                self._blit(self.name or "", box.x + 10, tx_y, self.font_text, (255,255,255))
-                y = box.bottom + self.line_gap + 6
-                self._blit("Enter to continue", x, y, self.font_hint)
-
+                x, y, inner = self._draw_panel("Name this location")
+                underline_w = inner.w - 2*self.pad
+                name_y = y + self.font_item.get_height() + 3
+                pygame.draw.line(self.screen, (0,0,0), (inner.x + self.pad, name_y), (inner.x + self.pad + underline_w, name_y), 2)
+                self._blit(self.name or "", inner.x + self.pad, y, self.font_item)
             elif self.step == 2:
-                _, h = self._blit("Choose a Feature Type", x, y, self.font_header); y += h + self.line_gap
-                col_w = (self.rect.w - 2*self.pad) // 3
-                col_x = [self.rect.x + self.pad + i*col_w for i in range(3)]
-                top_y = y
+                x, y, inner = self._draw_panel("Choose a Feature Type")
+                cols_area_x = inner.x + self.pad
+                cols_area_w = inner.w - 2*self.pad
+                col_w = cols_area_w // 3
                 for ci, (title, items) in enumerate(COLUMNS):
-                    self._blit(title, col_x[ci], top_y, self.font_label)
-                    yy = top_y + self.font_label.get_height() + 6
+                    cx = cols_area_x + ci*col_w + 6
+                    self._blit(title, cx, y, self.font_cat)
+                    iy = y + self.font_cat.get_height() + 6
                     for ri, (key, label) in enumerate(items):
-                        arrow = "→ " if (ci == self.col_idx and ri == self.row_idx) else "  "
-                        self._blit(f"{arrow}{label}", col_x[ci], yy, self.font_label)
-                        yy += self.font_label.get_height() + 6
-
+                        marker = "→ " if (ci==self.col_idx and ri==self.row_idx) else "  "
+                        self._blit(f"{marker}{label}", cx, iy, self.font_item)
+                        iy += self.font_item.get_height() + 6
             elif self.step == 3:
-                _, h = self._blit("Notes / Features", x, y, self.font_header); y += h + self.line_gap
-                box_h = self.rect.h - (y - self.rect.y) - 60
-                box = pygame.Rect(x, y, self.rect.w - 2*self.pad, box_h)
-                pygame.draw.rect(self.screen, (255,255,255), box)
-                pygame.draw.rect(self.screen, (255,255,255), box, 2)
+                x, y, inner = self._draw_panel("Notes / Features")
+                box = pygame.Rect(inner.x + self.pad, y, inner.w - 2*self.pad, inner.h - (y - inner.y) - 46)
+                pygame.draw.rect(self.screen, (255,255,255), box); pygame.draw.rect(self.screen, (0,0,0), box, 2)
                 self._blit_in_box(self.notes, box, self.font_text)
-                self._blit("Ctrl+Enter to continue", x, box.bottom + 8, self.font_hint)
-
+                self._blit("Ctrl+Enter to continue", inner.x + self.pad, box.bottom + 6, self.font_hint)
             elif self.step == 4:
-                _, h = self._blit("Confirm", x, y, self.font_header); y += h + self.line_gap
-                _, h = self._blit(f"Name: {self.name}", x, y, self.font_label); y += h + 2
-                _, h = self._blit(f"Type: {KEY_TO_LABEL.get(self.type_key,'')}", x, y, self.font_label); y += h + 8
-                self._blit("Press Enter to Save, Backspace to edit notes", x, y, self.font_hint)
+                x, y, inner = self._draw_panel("Confirm")
+                self._blit(f"Name: {self.name}", x, y, self.font_item); y += self.font_item.get_height() + 4
+                from hexscribe.types import KEY_TO_LABEL as K2L
+                self._blit(f"Type: {K2L.get(self.type_key,'')}", x, y, self.font_item)
 
-            pygame.display.flip()
-            clock.tick(60)
+            pygame.display.flip(); clock.tick(60)
         return None
+
+# ---------- main loop with LR/TB traversal ----------
+def compute_lr_tb_order(diamonds_xy):
+    # diamonds_xy: list of (x,y,whatever)
+    idx_xy = [(i, x, y) for i, (x, y, _) in enumerate(diamonds_xy)]
+    # Sort by x ascending, then y ascending (top to bottom)
+    idx_xy.sort(key=lambda t: (t[1], t[2]))
+    return [i for i, _x, _y in idx_xy]
 
 def main():
     pygame.init()
@@ -278,11 +226,13 @@ def main():
             persisted_marks = None
 
     marks = persisted_marks
-    sel = 0
+    order = []          # ordered list of diamond indices (left->right, top->bottom)
+    sel_ord = 0         # selection index in 'order'
+    sel_actual = 0      # actual renderer index
     clock = pygame.time.Clock()
 
     hex_data_ref = [hex_data]
-    selected_index_ref = [sel]
+    selected_index_ref = [sel_actual]
     picker = make_json_feature_picker(hex_data_ref, selected_index_ref)
 
     running = True
@@ -293,23 +243,19 @@ def main():
             elif event.type == pygame.KEYDOWN:
                 if event.key in (pygame.K_ESCAPE, pygame.K_q):
                     running = False
-                elif event.key in (pygame.K_LEFT, pygame.K_KP4):
-                    sel = _next_index_by_direction(getattr(renderer, "last_diamonds", []), sel, -1, 0)
-                elif event.key in (pygame.K_RIGHT, pygame.K_KP6):
-                    sel = _next_index_by_direction(getattr(renderer, "last_diamonds", []), sel, 1, 0)
-                elif event.key in (pygame.K_UP, pygame.K_KP8):
-                    sel = _next_index_by_direction(getattr(renderer, "last_diamonds", []), sel, 0, -1)
-                elif event.key in (pygame.K_DOWN, pygame.K_KP2):
-                    sel = _next_index_by_direction(getattr(renderer, "last_diamonds", []), sel, 0, 1)
+                elif event.key in (pygame.K_LEFT,):
+                    if order:
+                        sel_ord = (sel_ord - 1) % len(order)
+                        sel_actual = order[sel_ord]
+                elif event.key in (pygame.K_RIGHT,):
+                    if order:
+                        sel_ord = (sel_ord + 1) % len(order)
+                        sel_actual = order[sel_ord]
                 elif event.key in (pygame.K_r,):
-                    delete_hex(HEX_ID)
-                    hex_data = None
-                    hex_data_ref[0] = None
-                    marks = None
-                    sel = 0
+                    delete_hex(HEX_ID); hex_data=None; hex_data_ref[0]=None; marks=None; order=[]; sel_ord=0; sel_actual=0
                 elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                    if hex_data and 0 <= sel < len(hex_data.get("diamonds", [])):
-                        d = hex_data["diamonds"][sel]
+                    if hex_data and order:
+                        d = hex_data["diamonds"][sel_actual]
                         deck_value = int(d.get("value", 1))
                         initial = None
                         if d.get("status") == "discovered":
@@ -317,32 +263,33 @@ def main():
                         modal = ExploreModal(screen, L, deck_value, initial=initial)
                         result = modal.run()
                         if result:
-                            d["status"] = "discovered"
-                            d["name"] = result["name"]
-                            d["type"] = result["type"]
-                            d["text"] = result["text"]
-                            d["icon"] = result["icon"]
+                            d.update({"status":"discovered","name":result["name"],"type":result["type"],
+                                      "text":result["text"],"icon":result["icon"]})
                             hex_data["updated_at"] = datetime.utcnow().isoformat() + "Z"
-                            save_hex(hex_data)
-                            hex_data_ref[0] = hex_data
+                            save_hex(hex_data); hex_data_ref[0]=hex_data
                 elif event.key in (pygame.K_e,):
-                    if hex_data and 0 <= sel < len(hex_data.get("diamonds", [])):
-                        d = hex_data["diamonds"][sel]
+                    if hex_data and order:
+                        d = hex_data["diamonds"][sel_actual]
                         if d.get("status") == "discovered":
                             deck_value = int(d.get("value", 1))
                             initial = {"name": d.get("name") or "", "text": d.get("text") or "", "icon": d.get("icon")}
                             modal = ExploreModal(screen, L, deck_value, initial=initial)
                             result = modal.run()
                             if result:
-                                d["name"] = result["name"]
-                                d["type"] = result["type"]
-                                d["text"] = result["text"]
-                                d["icon"] = result["icon"]
+                                d.update({"name":result["name"],"type":result["type"],"text":result["text"],"icon":result["icon"]})
                                 hex_data["updated_at"] = datetime.utcnow().isoformat() + "Z"
-                                save_hex(hex_data)
-                                hex_data_ref[0] = hex_data
+                                save_hex(hex_data); hex_data_ref[0]=hex_data
 
-        selected_index_ref[0] = sel
+        # Update order whenever diamonds change
+        if getattr(renderer, "last_diamonds", None):
+            new_n = len(renderer.last_diamonds)
+            new_order = compute_lr_tb_order(renderer.last_diamonds) if new_n > 0 else []
+            if new_order != order:
+                order = new_order
+                sel_ord = 0
+                sel_actual = order[0] if order else 0
+
+        selected_index_ref[0] = sel_actual
         hex_data_ref[0] = hex_data
 
         img = renderer.render(
@@ -350,7 +297,7 @@ def main():
             description=("Arrows/Numpad to move. Enter to explore. R resets this hex."),
             features=[("keep","")],
             marks=marks,
-            selected_idx=sel,
+            selected_idx=sel_actual,
             feature_picker=picker
         )
 
@@ -362,37 +309,30 @@ def main():
                 "created_at": datetime.utcnow().isoformat() + "Z",
                 "updated_at": datetime.utcnow().isoformat() + "Z",
                 "diamonds": [
-                    {
-                        "uid": f"d{i:02d}",
-                        "center_index": int(ci),
-                        "value": int(val),
-                        "status": "unknown",
-                        "name": None,
-                        "type": None,
-                        "text": None,
-                        "icon": None,
-                        "tags": [],
-                    } for i, (ci, val) in enumerate(marks)
+                    {"uid": f"d{i:02d}","center_index": int(ci),"value": int(val),
+                     "status": "unknown","name": None,"type": None,"text": None,"icon": None,"tags": []}
+                    for i, (ci, val) in enumerate(marks)
                 ],
                 "trails": []
             }
-            save_hex(hex_data)
-            hex_data_ref[0] = hex_data
+            save_hex(hex_data); hex_data_ref[0] = hex_data
 
-        if renderer.last_diamonds:
-            sel = max(0, min(sel, len(renderer.last_diamonds)-1))
+        if getattr(renderer, "last_diamonds", None):
+            if order:
+                sel_ord = max(0, min(sel_ord, len(order)-1))
+                sel_actual = order[sel_ord]
+            else:
+                sel_ord = 0; sel_actual = 0
         else:
-            sel = 0
+            sel_ord = 0; sel_actual = 0
 
         rgb = img.convert("RGB")
-        data = rgb.tobytes()
-        pyg_img = pygame.image.fromstring(data, rgb.size, "RGB")
+        pyg_img = pygame.image.fromstring(rgb.tobytes(), rgb.size, "RGB")
         screen.blit(pyg_img, (0, 0))
         pygame.display.flip()
         clock.tick(60)
 
-    pygame.quit()
-    sys.exit(0)
+    pygame.quit(); sys.exit(0)
 
 if __name__ == "__main__":
     main()
