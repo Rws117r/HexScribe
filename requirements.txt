@@ -1,0 +1,6 @@
+pillow
+sqlalchemy
+fastapi
+uvicorn
+requests
+adafruit-circuitpython-epd
