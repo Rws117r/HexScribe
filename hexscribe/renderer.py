@@ -138,20 +138,24 @@ class HexScreenRenderer:
         d.rectangle([L.margin, L.margin, self.W - L.margin, self.H - L.margin], outline=0, width=2)
         d.line([(L.split_x, L.margin), (L.split_x, self.H - L.margin)], fill=0, width=2)
 
-        # left header (Jost ExtraBold, fitted to column)
+        # left header (Jost ExtraBold, fitted to column, centered)
         left_x  = L.margin + L.left_pad
         right_x = L.split_x - L.right_pad
         max_px  = right_x - left_x
+        center_x = (left_x + right_x) // 2
+        
         left_title_font = self._fit_font(d, f"HEX:{hex_id}", lambda s: _jost(s, 850), max_width=max_px, max_size=self.font_left_title_size, min_size=14)
         title = f"HEX:{hex_id}"
-        d.text((left_x, L.margin + L.top_pad), title, font=left_title_font, fill=0)
-        _, th = self._measure(d, title, left_title_font)
+        title_w, th = self._measure(d, title, left_title_font)
+        d.text((center_x - title_w//2, L.margin + L.top_pad), title, font=left_title_font, fill=0)
 
-        # left description
-        y = L.margin + L.top_pad + th + 6
+        # left description (centered with buffer)
+        y = L.margin + L.top_pad + th + 12
         line_gap = 1.4
-        for line in self._wrap(d, description, self.font_body, max_px):
-            d.text((left_x, y), line, font=self.font_body, fill=0)
+        wrapped_lines = self._wrap(d, description, self.font_body, max_px)
+        for line in wrapped_lines:
+            line_w, _ = self._measure(d, line, self.font_body)
+            d.text((center_x - line_w//2, y), line, font=self.font_body, fill=0)
             y += int(self._measure(d, "Ag", self.font_body)[1] * line_gap)
 
         grid_top = y + L.hex_inset_top
@@ -263,7 +267,7 @@ class HexScreenRenderer:
         d.text((name_x, header_y), name_text, font=name_font, fill=0)
 
         # Type with spacing
-        type_y = header_y + name_h + 6
+        type_y = header_y + name_h + 12
         type_w, type_h = self._measure(d, type_text, type_font)
         type_x = panel_left + (panel_width - type_w)//2
         d.text((type_x, type_y), type_text, font=type_font, fill=0)

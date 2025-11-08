@@ -49,7 +49,7 @@ def make_json_feature_picker(hex_data_ref, selected_index_ref):
         }
     return pick
 
-# ---------- Modal (same as previous compact version) ----------
+# ---------- Modal ----------
 class ExploreModal:
     def __init__(self, screen, ui, deck_value: int, initial=None):
         self.screen = screen
@@ -184,8 +184,16 @@ class ExploreModal:
                     self._blit(title, cx, y, self.font_cat)
                     iy = y + self.font_cat.get_height() + 6
                     for ri, (key, label) in enumerate(items):
-                        marker = "→ " if (ci==self.col_idx and ri==self.row_idx) else "  "
-                        self._blit(f"{marker}{label}", cx, iy, self.font_item)
+                        if ci==self.col_idx and ri==self.row_idx:
+                            # Draw black triangle cursor
+                            tri_size = 8
+                            tri_y = iy + self.font_item.get_height()//2
+                            tri_points = [(cx, tri_y), (cx, tri_y - tri_size), (cx + tri_size, tri_y - tri_size//2)]
+                            pygame.draw.polygon(self.screen, (0,0,0), tri_points)
+                            label_x = cx + tri_size + 4
+                        else:
+                            label_x = cx + 12
+                        self._blit(label, label_x, iy, self.font_item)
                         iy += self.font_item.get_height() + 6
             elif self.step == 3:
                 x, y, inner = self._draw_panel("Notes / Features")

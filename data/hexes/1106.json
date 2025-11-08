@@ -1,12 +1,12 @@
 {
   "hex_id": "1106",
   "seed": 0,
-  "created_at": "2025-11-08T16:27:18.629041Z",
-  "updated_at": "2025-11-08T16:41:41.194473Z",
+  "created_at": "2025-11-08T17:31:17.945691Z",
+  "updated_at": "2025-11-08T17:51:58.019399Z",
   "diamonds": [
     {
       "uid": "d00",
-      "center_index": 0,
+      "center_index": 4,
       "value": 5,
       "status": "unknown",
       "name": null,
@@ -17,30 +17,8 @@
     },
     {
       "uid": "d01",
-      "center_index": 9,
+      "center_index": 8,
       "value": 1,
-      "status": "discovered",
-      "name": "Wilderness Portal",
-      "type": "Passage",
-      "text": "Type in whatever I find in on the card",
-      "icon": "passage",
-      "tags": []
-    },
-    {
-      "uid": "d02",
-      "center_index": 1,
-      "value": 5,
-      "status": "discovered",
-      "name": "Test Location",
-      "type": "Village",
-      "text": "This is a test to see if everything fixed in thet thing k I want to the sit hsot iahlgoisdjflksoi",
-      "icon": "village",
-      "tags": []
-    },
-    {
-      "uid": "d03",
-      "center_index": 10,
-      "value": 2,
       "status": "unknown",
       "name": null,
       "type": null,
@@ -49,14 +27,36 @@
       "tags": []
     },
     {
-      "uid": "d04",
-      "center_index": 6,
+      "uid": "d02",
+      "center_index": 11,
       "value": 3,
       "status": "unknown",
       "name": null,
       "type": null,
       "text": null,
       "icon": null,
+      "tags": []
+    },
+    {
+      "uid": "d03",
+      "center_index": 7,
+      "value": 4,
+      "status": "discovered",
+      "name": "Test",
+      "type": "Hazard",
+      "text": "This is a location where there is a very back thing for hte player",
+      "icon": "hazard",
+      "tags": []
+    },
+    {
+      "uid": "d04",
+      "center_index": 3,
+      "value": 4,
+      "status": "discovered",
+      "name": "The Flensing Gate",
+      "type": "Portal",
+      "text": "To open the door one must draw a glyph in squid ink a sarcastic imp protects it a sphere that lets you change the weather once lies beyond the gate and if activated a spectral flayer is freed to enter the world.",
+      "icon": "portal",
       "tags": []
     }
   ],
