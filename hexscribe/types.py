@@ -1,7 +1,6 @@
 # hexscribe/types.py
 from typing import List, Tuple, Dict
 
-# Master list (key, label)
 FEATURE_TYPES: List[Tuple[str, str]] = [
     ("place_of_power",    "Place of Power"),
     ("mystical_meddling", "Mystical Meddling"),
@@ -21,7 +20,6 @@ FEATURE_TYPES: List[Tuple[str, str]] = [
 LABEL_TO_KEY: Dict[str, str] = {label: key for key, label in FEATURE_TYPES}
 KEY_TO_LABEL: Dict[str, str] = {key: label for key, label in FEATURE_TYPES}
 
-# 3-column category layout for the picker
 COLUMNS = [
     ("Mystic", [
         ("place_of_power",    "Place of Power"),

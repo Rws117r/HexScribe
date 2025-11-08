@@ -16,7 +16,6 @@ UNKNOWN_FEATURE = {
     "category": "",
 }
 
-# ---------- utils ----------
 def fonts_root() -> Path:
     return Path(__file__).resolve().parent / "fonts"
 
@@ -73,46 +72,37 @@ def make_json_feature_picker(hex_data_ref, selected_index_ref):
         }
     return pick
 
-# ---------- Modal ----------
 class ExploreModal:
-    """Blocking modal with crisp fonts, overlay panel, columns picker, and wrapped notes."""
     def __init__(self, screen, ui, deck_value: int, initial=None):
         self.screen = screen
         self.ui = ui
         self.deck_value = deck_value
         self.initial = initial or {}
         self.active = True
-        self.step = 0  # 0 draw, 1 name, 2 type, 3 notes, 4 confirm
+        self.step = 0
         self.name = self.initial.get("name", "")
         init_key = self.initial.get("icon") or ""
         self.type_key = init_key if init_key in KEY_TO_LABEL else None
         self.notes = self.initial.get("text", "")
-        # selection state for columns (col index, row index)
         self.col_idx = 0
         self.row_idx = 0
 
-        # fonts (anti-aliasing OFF when rendering)
         pygame.font.init()
         self.font_header = load_pygame_font("Jost-VariableFont_wght.ttf", 30, bold=True)
         self.font_label  = load_pygame_font("Jost-VariableFont_wght.ttf", 20, bold=True)
         self.font_hint   = load_pygame_font("LibreCaslonText-Italic.ttf", 16, italic=True)
         self.font_text   = load_pygame_font("LibreCaslonText-Regular.ttf", 18)
 
-        # layout
-        W, H = ui.width, ui.height
-        self.rect = pygame.Rect(W//2 - 320, H//2 - 220, 640, 440)
         self.pad = 18
         self.line_gap = 8
 
-        # Build flat list for preselect if editing
         flat = [(c, r, key) for c, (_, items) in enumerate(COLUMNS) for r, (key, _label) in enumerate(items)]
         if self.type_key:
             for c, r, k in flat:
                 if k == self.type_key:
                     self.col_idx, self.row_idx = c, r; break
 
-    # --- text wrapping ---
-    def _wrap(self, text: str, font: "pygame.font.Font", max_w: int):
+    def _wrap(self, text, font, max_w):
         lines = []
         for para in text.split("\n"):
             words, cur = para.split(" "), ""
@@ -126,14 +116,17 @@ class ExploreModal:
             lines.append(cur)
         return lines or [""]
 
-    # --- drawing helpers ---
+    def _compute_rect(self):
+        W, H = self.screen.get_size()
+        panel_w, panel_h = 640, 440
+        return pygame.Rect((W - panel_w)//2, (H - panel_h)//2, panel_w, panel_h)
+
     def _draw_overlay(self):
-        # Do NOT blank the whole screen; draw only the panel so map shows behind.
-        pygame.draw.rect(self.screen, (0,0,0), self.rect)           # black fill
-        pygame.draw.rect(self.screen, (255,255,255), self.rect, 2)   # white border
+        self.rect = self._compute_rect()
+        pygame.draw.rect(self.screen, (0,0,0), self.rect)
+        pygame.draw.rect(self.screen, (255,255,255), self.rect, 2)
 
     def _blit(self, txt, x, y, font, color=(255,255,255)):
-        # anti-alias False for crisp edges
         surf = font.render(txt, False, color)
         self.screen.blit(surf, (x, y))
         return surf.get_width(), surf.get_height()
@@ -145,11 +138,10 @@ class ExploreModal:
         line_h = font.get_height() + 4
         max_lines = (box.h - 2*pad) // line_h
         for ln in wrapped[-max_lines:]:
-            surf = font.render(ln, False, (0,0,0))  # crisp, black
+            surf = font.render(ln, False, (0,0,0))
             self.screen.blit(surf, (box.x + pad, ty))
             ty += line_h
 
-    # --- input handling ---
     def _handle_text_input(self, current: str, event, limit: int) -> str:
         if event.key == pygame.K_BACKSPACE:
             return current[:-1]
@@ -161,7 +153,6 @@ class ExploreModal:
                 return current + ch
         return current
 
-    # --- modal main ---
     def run(self):
         clock = pygame.time.Clock()
         while self.active:
@@ -189,7 +180,6 @@ class ExploreModal:
                                 self.name += event.unicode
 
                     elif self.step == 2:
-                        # 3-column navigation
                         cols = COLUMNS
                         if event.key in (pygame.K_LEFT, pygame.K_a):
                             self.col_idx = (self.col_idx - 1) % len(cols)
@@ -206,7 +196,6 @@ class ExploreModal:
                             self.step = 3
 
                     elif self.step == 3:
-                        # Ctrl+Enter to confirm
                         if (event.key in (pygame.K_RETURN, pygame.K_KP_ENTER)) and (pygame.key.get_mods() & pygame.KMOD_CTRL):
                             self.step = 4
                         else:
@@ -223,7 +212,6 @@ class ExploreModal:
                         elif event.key == pygame.K_BACKSPACE:
                             self.step = 3
 
-            # draw panel only (overlay)
             self._draw_overlay()
             x = self.rect.x + self.pad
             y = self.rect.y + self.pad
@@ -243,16 +231,12 @@ class ExploreModal:
                 self._blit("Enter to continue", x, y, self.font_hint)
 
             elif self.step == 2:
-                # Column headers and lists
                 _, h = self._blit("Choose a Feature Type", x, y, self.font_header); y += h + self.line_gap
-                # columns area
                 col_w = (self.rect.w - 2*self.pad) // 3
                 col_x = [self.rect.x + self.pad + i*col_w for i in range(3)]
                 top_y = y
                 for ci, (title, items) in enumerate(COLUMNS):
-                    # title
                     self._blit(title, col_x[ci], top_y, self.font_label)
-                    # items
                     yy = top_y + self.font_label.get_height() + 6
                     for ri, (key, label) in enumerate(items):
                         arrow = "→ " if (ci == self.col_idx and ri == self.row_idx) else "  "
@@ -261,11 +245,10 @@ class ExploreModal:
 
             elif self.step == 3:
                 _, h = self._blit("Notes / Features", x, y, self.font_header); y += h + self.line_gap
-                # white textarea box (so black text is visible)
                 box_h = self.rect.h - (y - self.rect.y) - 60
                 box = pygame.Rect(x, y, self.rect.w - 2*self.pad, box_h)
-                pygame.draw.rect(self.screen, (255,255,255), box)       # fill white
-                pygame.draw.rect(self.screen, (255,255,255), box, 2)     # border white (keeps shape on black panel)
+                pygame.draw.rect(self.screen, (255,255,255), box)
+                pygame.draw.rect(self.screen, (255,255,255), box, 2)
                 self._blit_in_box(self.notes, box, self.font_text)
                 self._blit("Ctrl+Enter to continue", x, box.bottom + 8, self.font_hint)
 
@@ -279,7 +262,6 @@ class ExploreModal:
             clock.tick(60)
         return None
 
-# ---------- main loop ----------
 def main():
     pygame.init()
     L = UILayout()
