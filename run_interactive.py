@@ -1,11 +1,13 @@
 # run_interactive.py (ordered LR / TB navigation)
 import sys, math, pygame
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from hexscribe import HexScreenRenderer, UILayout
 from hexscribe.state import load_hex, save_hex, delete_hex
 from hexscribe.types import COLUMNS, KEY_TO_LABEL
+
+from hexscribe.ai.feature_description_ai import generate_feature_description
 
 HEX_ID = "1106"
 
@@ -33,9 +35,8 @@ def make_json_feature_picker(hex_data_ref, selected_index_ref):
     def pick(_ignored):
         hex_data = hex_data_ref[0]
         sel = selected_index_ref[0]
-        if not hex_data or "diamonds" not in hex_data: return {
-            "name":"Unknown","type":"Unexplored","text":"Press Enter to explore.","category":""
-        }
+        if not hex_data or "diamonds" not in hex_data:
+            return {"name":"Unknown","type":"Unexplored","text":"Press Enter to explore.","category":""}
         if sel is None or sel < 0 or sel >= len(hex_data["diamonds"]):
             return {"name":"Unknown","type":"Unexplored","text":"Press Enter to explore.","category":""}
         d = hex_data["diamonds"][sel]
@@ -49,7 +50,22 @@ def make_json_feature_picker(hex_data_ref, selected_index_ref):
         }
     return pick
 
-# ---------- Modal ----------
+def _ai_rewrite_text(raw_text: str, *, use_ai: bool = True, tone: str | None = None, model: str = "llama3.2:3b") -> str:
+    raw_text = (raw_text or "").strip()
+    if not raw_text or not use_ai:
+        return raw_text
+    try:
+        return generate_feature_description(
+            raw_text,
+            model=model,
+            tone=tone,
+            stream=True,
+            max_words=220,
+        ) or raw_text
+    except Exception as e:
+        print(f"[AI fallback] {e}")
+        return raw_text
+
 class ExploreModal:
     def __init__(self, screen, ui, deck_value: int, initial=None):
         self.screen = screen
@@ -121,8 +137,19 @@ class ExploreModal:
         ty = box.y + pad
         line_h = font.get_height() + 3
         max_lines = max(1, (box.h - 2*pad) // line_h)
-        for ln in wrapped[-max_lines:]:
-            self.screen.blit(font.render(ln, False, (0,0,0)), (box.x + pad, ty))
+
+        if len(wrapped) <= max_lines:
+            lines = wrapped
+        else:
+            lines = wrapped[:max_lines]
+            last = lines[-1].rstrip()
+            if last and last[-1] not in ".!?…":
+                last = (last + "…") if len(last) <= 3 else (last[:-1] + "…")
+            lines[-1] = last
+
+        x0 = box.x + pad
+        for ln in lines:
+            self.screen.blit(font.render(ln, False, (0,0,0)), (x0, ty))
             ty += line_h
 
     def _handle_text_input(self, current, event, limit):
@@ -163,7 +190,6 @@ class ExploreModal:
                             return {"name": self.name.strip(), "type": KEY_TO_LABEL.get(self.type_key, ""), "text": self.notes.strip(), "icon": self.type_key}
                         elif event.key == pygame.K_BACKSPACE: self.step = 3
 
-            # draw
             if self.step == 0:
                 x, y, inner = self._draw_panel(f"Explore — Draw from Deck {self.deck_value}")
                 self._blit("Draw a card for this diamond's deck.", x, y, self.font_item); y += self.font_item.get_height() + self.line_gap
@@ -185,7 +211,6 @@ class ExploreModal:
                     iy = y + self.font_cat.get_height() + 6
                     for ri, (key, label) in enumerate(items):
                         if ci==self.col_idx and ri==self.row_idx:
-                            # Draw black triangle cursor
                             tri_size = 8
                             tri_y = iy + self.font_item.get_height()//2
                             tri_points = [(cx, tri_y), (cx, tri_y - tri_size), (cx + tri_size, tri_y - tri_size//2)]
@@ -210,12 +235,9 @@ class ExploreModal:
             pygame.display.flip(); clock.tick(60)
         return None
 
-# ---------- main loop with LR/TB traversal ----------
 def compute_lr_tb_order(diamonds_xy):
-    # diamonds_xy: list of (x,y,whatever)
     idx_xy = [(i, x, y) for i, (x, y, _) in enumerate(diamonds_xy)]
-    # Sort by x ascending, then y ascending (top to bottom)
-    idx_xy.sort(key=lambda t: (t[1], t[2]))
+    idx_xy.sort(key=lambda t: (t[1], t[2]))  # x asc, then y asc
     return [i for i, _x, _y in idx_xy]
 
 def main():
@@ -234,14 +256,17 @@ def main():
             persisted_marks = None
 
     marks = persisted_marks
-    order = []          # ordered list of diamond indices (left->right, top->bottom)
-    sel_ord = 0         # selection index in 'order'
-    sel_actual = 0      # actual renderer index
+    order, sel_ord, sel_actual = [], 0, 0
     clock = pygame.time.Clock()
 
     hex_data_ref = [hex_data]
     selected_index_ref = [sel_actual]
     picker = make_json_feature_picker(hex_data_ref, selected_index_ref)
+
+    USE_AI_PROSE = True
+    AI_TONE = None  # e.g., "grimdark", "whimsical"
+
+    text_scroll = 0  # NEW
 
     running = True
     while running:
@@ -255,12 +280,18 @@ def main():
                     if order:
                         sel_ord = (sel_ord - 1) % len(order)
                         sel_actual = order[sel_ord]
+                        text_scroll = 0
                 elif event.key in (pygame.K_RIGHT,):
                     if order:
                         sel_ord = (sel_ord + 1) % len(order)
                         sel_actual = order[sel_ord]
+                        text_scroll = 0
+                elif event.key == pygame.K_KP9:
+                    text_scroll = max(0, text_scroll - 1)
+                elif event.key == pygame.K_KP3:
+                    text_scroll = text_scroll + 1
                 elif event.key in (pygame.K_r,):
-                    delete_hex(HEX_ID); hex_data=None; hex_data_ref[0]=None; marks=None; order=[]; sel_ord=0; sel_actual=0
+                    delete_hex(HEX_ID); hex_data=None; hex_data_ref[0]=None; marks=None; order=[]; sel_ord=0; sel_actual=0; text_scroll=0
                 elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                     if hex_data and order:
                         d = hex_data["diamonds"][sel_actual]
@@ -271,10 +302,17 @@ def main():
                         modal = ExploreModal(screen, L, deck_value, initial=initial)
                         result = modal.run()
                         if result:
-                            d.update({"status":"discovered","name":result["name"],"type":result["type"],
-                                      "text":result["text"],"icon":result["icon"]})
-                            hex_data["updated_at"] = datetime.utcnow().isoformat() + "Z"
+                            rewritten_text = _ai_rewrite_text(result["text"], use_ai=USE_AI_PROSE, tone=AI_TONE)
+                            d.update({
+                                "status": "discovered",
+                                "name": result["name"],
+                                "type": result["type"],
+                                "text": rewritten_text,
+                                "icon": result["icon"],
+                            })
+                            hex_data["updated_at"] = datetime.now(timezone.utc).isoformat()
                             save_hex(hex_data); hex_data_ref[0]=hex_data
+                            text_scroll = 0
                 elif event.key in (pygame.K_e,):
                     if hex_data and order:
                         d = hex_data["diamonds"][sel_actual]
@@ -284,11 +322,17 @@ def main():
                             modal = ExploreModal(screen, L, deck_value, initial=initial)
                             result = modal.run()
                             if result:
-                                d.update({"name":result["name"],"type":result["type"],"text":result["text"],"icon":result["icon"]})
-                                hex_data["updated_at"] = datetime.utcnow().isoformat() + "Z"
+                                rewritten_text = _ai_rewrite_text(result["text"], use_ai=USE_AI_PROSE, tone=AI_TONE)
+                                d.update({
+                                    "name": result["name"],
+                                    "type": result["type"],
+                                    "text": rewritten_text,
+                                    "icon": result["icon"],
+                                })
+                                hex_data["updated_at"] = datetime.now(timezone.utc).isoformat()
                                 save_hex(hex_data); hex_data_ref[0]=hex_data
+                                text_scroll = 0
 
-        # Update order whenever diamonds change
         if getattr(renderer, "last_diamonds", None):
             new_n = len(renderer.last_diamonds)
             new_order = compute_lr_tb_order(renderer.last_diamonds) if new_n > 0 else []
@@ -296,17 +340,19 @@ def main():
                 order = new_order
                 sel_ord = 0
                 sel_actual = order[0] if order else 0
+                text_scroll = 0
 
         selected_index_ref[0] = sel_actual
         hex_data_ref[0] = hex_data
 
         img = renderer.render(
             hex_id=HEX_ID,
-            description=("Arrows/Numpad to move. Enter to explore. R resets this hex."),
+            description=("Arrows/Numpad to move. Enter to explore. R resets this hex. 9/3 to scroll."),
             features=[("keep","")],
             marks=marks,
             selected_idx=sel_actual,
-            feature_picker=picker
+            feature_picker=picker,
+            text_scroll=text_scroll,   # NEW: renderer should accept and use this
         )
 
         if marks is None and renderer.last_marks:
@@ -314,8 +360,8 @@ def main():
             hex_data = {
                 "hex_id": HEX_ID,
                 "seed": 0,
-                "created_at": datetime.utcnow().isoformat() + "Z",
-                "updated_at": datetime.utcnow().isoformat() + "Z",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
                 "diamonds": [
                     {"uid": f"d{i:02d}","center_index": int(ci),"value": int(val),
                      "status": "unknown","name": None,"type": None,"text": None,"icon": None,"tags": []}

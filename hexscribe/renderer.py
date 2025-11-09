@@ -72,6 +72,8 @@ class HexScreenRenderer:
         # last-frame state
         self.last_diamonds: List[Tuple[int, int, int]] = []
         self.last_marks: List[Tuple[int, int]] = []
+        self.last_text_scroll: int = 0
+        self.last_text_max_scroll: int = 0
 
     # ---------- text helpers ----------
     def _measure(self, d: ImageDraw.ImageDraw, text: str, font):
@@ -129,7 +131,11 @@ class HexScreenRenderer:
                features,  # kept for API compat (unused)
                marks: Optional[List[Tuple[int, int]]] = None,
                selected_idx: Optional[int] = None,
-               feature_picker: Optional[Callable[[int], dict]] = None):
+               feature_picker: Optional[Callable[[int], dict]] = None,
+               text_scroll: int = 0):
+        """
+        Added: text_scroll -> line offset for the right-pane text box.
+        """
         L = self.L
         img = Image.new("1", (self.W, self.H), 1)
         d   = ImageDraw.Draw(img)
@@ -242,6 +248,7 @@ class HexScreenRenderer:
         panel_left = L.split_x + 16
         panel_right = self.W - L.margin - 8
         panel_width = panel_right - panel_left
+        panel_height = self.H - 2 * L.margin  # height of the right column
 
         # feature dict from picker (JSON-driven in your runner)
         feature_dict = None
@@ -272,22 +279,35 @@ class HexScreenRenderer:
         type_x = panel_left + (panel_width - type_w)//2
         d.text((type_x, type_y), type_text, font=type_font, fill=0)
 
-        # Text box
+        # Text box (HALF HEIGHT of right panel)
         box_top = type_y + type_h + 12
-        box_h   = int(self.H - L.margin - box_top - 8)
+        full_h   = int(self.H - L.margin - box_top - 8)  # previous available height
+        box_h    = max(80, full_h // 2)                  # half-height (min 80px)
         box_rect = [panel_left, box_top, panel_left + panel_width, box_top + box_h]
         d.rectangle(box_rect, outline=0, width=2)
 
-        # Body text LEFT-aligned with comfortable line gap
+        # Body text LEFT-aligned with line gap; support scrolling
         pad = 10
         tx = box_rect[0] + pad
         ty = box_top + pad
         usable_w = panel_width - 2*pad
         body_lines = self._wrap(d, body_text, self.font_body, usable_w)
         lh = self._measure(d, "Ag", self.font_body)[1]
-        for line in body_lines:
+        line_gap_px = int(lh * 1.5)
+        max_lines = max(1, (box_h - 2*pad) // line_gap_px)
+
+        # clamp and slice by text_scroll
+        max_scroll = max(0, len(body_lines) - max_lines)
+        text_scroll = max(0, min(int(text_scroll), max_scroll))
+        visible = body_lines[text_scroll:text_scroll + max_lines]
+
+        for line in visible:
             d.text((tx, ty), line, font=self.font_body, fill=0)
-            ty += int(lh * 1.5)
+            ty += line_gap_px
+
+        # Store scrolling diagnostics
+        self.last_text_scroll = text_scroll
+        self.last_text_max_scroll = max_scroll
 
         # legend
         panel_right_inner = L.split_x - L.legend_right_margin - L.legend_safe_from_split

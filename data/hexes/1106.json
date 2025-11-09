@@ -1,23 +1,12 @@
 {
   "hex_id": "1106",
   "seed": 0,
-  "created_at": "2025-11-08T17:31:17.945691Z",
-  "updated_at": "2025-11-08T17:51:58.019399Z",
+  "created_at": "2025-11-08T18:33:23.355304+00:00",
+  "updated_at": "2025-11-08T18:41:48.745457+00:00",
   "diamonds": [
     {
       "uid": "d00",
-      "center_index": 4,
-      "value": 5,
-      "status": "unknown",
-      "name": null,
-      "type": null,
-      "text": null,
-      "icon": null,
-      "tags": []
-    },
-    {
-      "uid": "d01",
-      "center_index": 8,
+      "center_index": 11,
       "value": 1,
       "status": "unknown",
       "name": null,
@@ -27,9 +16,31 @@
       "tags": []
     },
     {
-      "uid": "d02",
-      "center_index": 11,
+      "uid": "d01",
+      "center_index": 9,
       "value": 3,
+      "status": "discovered",
+      "name": "Fortified Trading Town",
+      "type": "Town",
+      "text": "Deep beneath the earth, the fortified trading town thrives, its main defenses a testament to innovative engineering: animated rocks, imbued with ancient magic, stand watch over the bustling marketplaces. The city's sprawling metropolis stretches far and wide, its tunnels and caverns a marvel of subterranean architecture. Here, merchants and adventurers from across the realm converge to exchange rare and magical goods in brisk, high-stakes transactions. The air is thick with the smells of exotic spices and polished metals as patrons haggle over enchanted artifacts and precious commodities, their voices echoing off the stone walls.",
+      "icon": "town",
+      "tags": []
+    },
+    {
+      "uid": "d02",
+      "center_index": 1,
+      "value": 1,
+      "status": "discovered",
+      "name": "The Dungeon of Death",
+      "type": "Dungeon",
+      "text": "In this foreboding dungeon, darkness seeps from every stone as you descend into the depths. Level one unfolds like a charnel house, four cold rooms filled with the skeletal remains of the fallen, their bones bleached white by time and neglect. The air reeks of decay and death. Beyond lies level two, where tattered curtains shroud crypts containing the unholy trappings of ghouls, their presence hinted at by wisps of malevolent energy. A mysterious blood altar stands, its surface slick with an otherworldly stain. Above, level three beckons, leading to the antechamber of the Tome of Xagna Ragna, a minor demon's dark legacy waiting to be unearthed.",
+      "icon": "dungeon",
+      "tags": []
+    },
+    {
+      "uid": "d03",
+      "center_index": 10,
+      "value": 1,
       "status": "unknown",
       "name": null,
       "type": null,
@@ -38,25 +49,14 @@
       "tags": []
     },
     {
-      "uid": "d03",
-      "center_index": 7,
-      "value": 4,
-      "status": "discovered",
-      "name": "Test",
-      "type": "Hazard",
-      "text": "This is a location where there is a very back thing for hte player",
-      "icon": "hazard",
-      "tags": []
-    },
-    {
       "uid": "d04",
-      "center_index": 3,
-      "value": 4,
-      "status": "discovered",
-      "name": "The Flensing Gate",
-      "type": "Portal",
-      "text": "To open the door one must draw a glyph in squid ink a sarcastic imp protects it a sphere that lets you change the weather once lies beyond the gate and if activated a spectral flayer is freed to enter the world.",
-      "icon": "portal",
+      "center_index": 4,
+      "value": 2,
+      "status": "unknown",
+      "name": null,
+      "type": null,
+      "text": null,
+      "icon": null,
       "tags": []
     }
   ],
