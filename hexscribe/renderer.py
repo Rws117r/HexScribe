@@ -10,6 +10,7 @@ from .legend import TrailLegend
 from .layout import UILayout
 
 
+
 # ---------- Font helpers ----------
 def _fonts_root() -> Path:
     # HEXSCRIBE/fonts/
